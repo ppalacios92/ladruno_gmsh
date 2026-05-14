@@ -451,94 +451,47 @@ class ViewerSession:
             self.logAppended.emit(text)
 
 
-def _prepare_qt_environment(QtCore, QtGui) -> None:
-    """Configure platform-specific Qt environment BEFORE QApplication is created.
-
-    Every attribute touched here must be set before ``QApplication(...)``;
-    setting them after has no effect (and in some cases throws warnings).
-
-    Three concerns this function addresses:
-
-    1. **Linux / Wayland / Hyprland with XWayland**: VTK draws via X11
-       GLX. If Qt picks the native Wayland plugin (because
-       ``qt5-wayland`` / ``qt6-wayland`` is installed) the QtInteractor
-       gets a Wayland surface but VTK still issues X11 ``ConfigureWindow``
-       requests against the parent. The X server reports ``BadWindow
-       (X_ConfigureWindow)`` — non-fatal but noisy. Forcing
-       ``QT_QPA_PLATFORM=xcb`` makes Qt use XWayland the whole way down,
-       so Qt and VTK share the same window IDs.
-
-    2. **OpenGL context sharing**: VTK reparents and reuses GL contexts
-       across docks and refresh cycles. Without ``AA_ShareOpenGLContexts``
-       the second add_mesh after a dock retabulation can issue
-       ``ConfigureWindow`` on a destroyed window — again
-       ``BadWindow``. Must be set before ``QApplication``.
-
-    3. **HiDPI rounding**: ``PassThrough`` (fractional scaling) is great
-       on Windows where the compositor speaks fractional scales, but on
-       XWayland fractional scales become non-integer pixel geometry and
-       Qt sends configure requests with those bogus dimensions. On Linux
-       we keep ``Round`` so XWayland always sees integer geometry.
-
-    Env vars are set with ``setdefault`` so the user can override (e.g.
-    ``QT_QPA_PLATFORM=wayland`` if they explicitly want to try native).
-    """
-    if sys.platform.startswith("linux"):
-        # Pin Qt to the XCB plugin. Hyprland's XWayland will route
-        # everything through X11, which is what VTK expects.
-        os.environ.setdefault("QT_QPA_PLATFORM", "xcb")
-        # Disable MIT-SHM on X servers that don't share memory with the
-        # client (e.g. remote X, some containers). Harmless when SHM is
-        # available — Xlib falls back automatically.
-        os.environ.setdefault("QT_X11_NO_MITSHM", "1")
-
-    # Share the GL context across QtInteractors. Required by VTK so the
-    # second-or-later widget reuses textures/buffers from the first
-    # instead of allocating a fresh X window each time. The flag is a
-    # no-op on platforms that already share.
-    share_attr = getattr(QtCore.Qt, "AA_ShareOpenGLContexts", None)
-    if share_attr is not None:
-        try:
-            QtCore.QCoreApplication.setAttribute(share_attr, True)
-        except Exception:
-            pass
-
-    # High-DPI: needed on Windows with display scaling > 100% so click
-    # coordinates match the rendered pixels. On Qt 6 these attributes
-    # are no-ops (high-DPI is always on); we set them anyway for Qt 5.
-    for attr_name in ("AA_EnableHighDpiScaling", "AA_UseHighDpiPixmaps"):
-        attr = getattr(QtCore.Qt, attr_name, None)
-        if attr is not None:
-            try:
-                QtCore.QCoreApplication.setAttribute(attr, True)
-            except Exception:
-                pass
-
-    # Rounding policy: PassThrough only on Windows (where fractional
-    # scales are useful). Linux/macOS get Round to keep pixel geometry
-    # integral — important under XWayland.
-    try:
-        policy_enum = QtCore.Qt.HighDpiScaleFactorRoundingPolicy
-        policy = (policy_enum.PassThrough if sys.platform == "win32"
-                  else policy_enum.Round)
-        QtGui.QGuiApplication.setHighDpiScaleFactorRoundingPolicy(policy)
-    except Exception:
-        pass
-
-
 def launch(api_session, *, blocking: bool = True):
-    """Create (or reuse) the ``QApplication`` and show the main window."""
+    """Create (or reuse) the ``QApplication`` and show the main window.
+
+    Cross-platform Qt setup follows the proven pattern shipping in
+    ``ShakerMakerResults`` and ``ShakerMaker.sw4_exporter``:
+
+    - **Linux**: prefer the ``xcb`` Qt platform when the session
+      defaults to Wayland. PyVistaQt + PyQt5 + VTK draws via X11 GLX
+      and crashes with ``BadWindow (X_ConfigureWindow)`` on
+      Wayland-native surfaces. Routing through XWayland fixes it.
+    - **Any platform with Kvantum**: force ``QT_STYLE_OVERRIDE=Fusion``
+      before QApplication, then call ``app.setStyle("Fusion")`` after
+      construction. Kvantum's window-management hooks reproduce the
+      same crash from the styling side.
+
+    Both steps must happen BEFORE the QApplication is created — Qt
+    latches these values at startup.
+    """
     deps = _qt()
-    QtCore = deps["QtCore"]
-    QtGui = deps["QtGui"]
     QtWidgets = deps["QtWidgets"]
     from .window import MainWindow
 
+    # ── Pre-QApplication setup (must be set before QApplication exists) ──
+    if sys.platform.startswith("linux"):
+        qpa = os.environ.get("QT_QPA_PLATFORM", "").strip().lower()
+        if qpa == "" or qpa.startswith("wayland"):
+            os.environ["QT_QPA_PLATFORM"] = "xcb"
+
+    if os.environ.get("QT_STYLE_OVERRIDE", "").lower() == "kvantum":
+        os.environ["QT_STYLE_OVERRIDE"] = "Fusion"
+
     existing = QtWidgets.QApplication.instance()
     owned = existing is None
-    if owned:
-        _prepare_qt_environment(QtCore, QtGui)
     app = existing or QtWidgets.QApplication([])
+
+    if owned:
+        try:
+            if "Fusion" in QtWidgets.QStyleFactory.keys():
+                app.setStyle("Fusion")
+        except Exception:
+            pass
 
     viewer = ViewerSession(api_session)
     window = MainWindow(viewer)
