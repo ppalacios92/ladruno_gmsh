@@ -1,0 +1,56 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.env
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Editors / IDEs
+.idea/
+.vscode/
+
+# Editor tooling and AI assistants (do not commit)
+.claude/
+.claude*/
+.cursor/
+.cursorignore
+.continue/
+.aider*
+.aiderignore
+.copilot/
+.github-copilot/
+AGENTS.md
+CLAUDE.md
+CLAUDE.local.md
+.codex/
+codex.md
+.windsurf/
+.cline/
+.zed/
+.openai/
+.anthropic/
+
+# OS / file system
+.DS_Store
+Thumbs.db
+desktop.ini
+~$*
+*.tmp
+*.tmp.*
+
+# Logs and runtime artefacts
+*.log
+
+# Generated mesh / project outputs
+*.msh
+*.vtu
+*.vtm
+tmp_*
