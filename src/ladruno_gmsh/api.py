@@ -537,6 +537,64 @@ class Session:
 
     # ── Topological exploration ─────────────────────────────────────
 
+    def adjacent_surfaces(self,
+                          entities: Iterable[EntitySelector]
+                          ) -> tuple[Entity, ...]:
+        """Mapea entidades de cualquier dim a las superficies asociadas.
+
+        - dim=2: la propia entidad.
+        - dim=3: sus superficies frontera.
+        - dim=1: superficies que tienen esa curva como frontera (upward).
+        - dim=0: superficies que tienen alguna curva incidente al punto.
+
+        Util para dar feedback visual de la seleccion en una escena
+        que solo tessella superficies (volumenes y curvas no se ven
+        directamente).
+        """
+        self._ensure_active()
+        import gmsh
+        dim_tags = _to_dim_tags(entities, self._document)
+        surf_dim_tags: set[tuple[int, int]] = set()
+        for d, t in dim_tags:
+            d = int(d); t = int(t)
+            if d == 2:
+                surf_dim_tags.add((2, t))
+            elif d == 3:
+                try:
+                    bnd = gmsh.model.getBoundary(
+                        [(3, t)], combined=False, oriented=False,
+                        recursive=False,
+                    )
+                    for bd, bt in bnd:
+                        surf_dim_tags.add((int(bd), abs(int(bt))))
+                except Exception:
+                    pass
+            elif d == 1:
+                try:
+                    up, _down = gmsh.model.getAdjacencies(1, t)
+                    for st in up:
+                        surf_dim_tags.add((2, int(st)))
+                except Exception:
+                    pass
+            elif d == 0:
+                try:
+                    up, _down = gmsh.model.getAdjacencies(0, t)
+                    for ct in up:
+                        sup, _ = gmsh.model.getAdjacencies(1, int(ct))
+                        for st in sup:
+                            surf_dim_tags.add((2, int(st)))
+                except Exception:
+                    pass
+
+        out: list[Entity] = []
+        seen: set[str] = set()
+        for sd, st in surf_dim_tags:
+            ent = self._document.find_by_dim_tag(sd, st)
+            if ent is not None and ent.uuid not in seen:
+                seen.add(ent.uuid)
+                out.append(ent)
+        return tuple(out)
+
     def boundary_of(self,
                     entities: Iterable[EntitySelector],
                     *,

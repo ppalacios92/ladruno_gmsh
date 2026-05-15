@@ -319,12 +319,56 @@ class MainWindow:
                 )
 
     def _apply_colors(self) -> None:
+        # La escena solo tessella superficies (dim=2). Para dar
+        # feedback visual cuando el usuario selecciona un volumen,
+        # curva o punto desde el Model Tree, expandimos la seleccion
+        # a las superficies asociadas (boundary del volumen, parents
+        # de la curva/punto). La multi_selection real no cambia: ahi
+        # siguen los uuids originales para que delete y otras ops
+        # operen sobre lo que el usuario eligio.
+        visual_sel = self._expand_to_visible_surfaces(
+            self.viewer.multi_selection
+        )
+        visual_obj = self._expand_to_visible_surfaces(
+            self.viewer.boolean_object
+        )
+        visual_tool = self._expand_to_visible_surfaces(
+            self.viewer.boolean_tool
+        )
         self.scene.recolor(
-            multi_selection=self.viewer.multi_selection,
-            boolean_object=self.viewer.boolean_object,
-            boolean_tool=self.viewer.boolean_tool,
+            multi_selection=visual_sel,
+            boolean_object=visual_obj,
+            boolean_tool=visual_tool,
             hidden=self.viewer.hidden,
         )
+
+    def _expand_to_visible_surfaces(self, uuids) -> set[str]:
+        """Convierte uuids de cualquier dim a uuids de superficies
+        visibles en la escena, via :meth:`api.adjacent_surfaces`."""
+        target = set(uuids)
+        if not target:
+            return set()
+        doc = self.viewer.api.document
+        surface_ids: set[str] = set()
+        non_surface_entities = []
+        for u in target:
+            e = doc.find_by_uuid(u)
+            if e is None:
+                continue
+            if e.dim == 2:
+                surface_ids.add(u)
+            else:
+                non_surface_entities.append(e)
+        if non_surface_entities:
+            try:
+                expanded = self.viewer.api.adjacent_surfaces(
+                    non_surface_entities,
+                )
+                for e in expanded:
+                    surface_ids.add(e.uuid)
+            except Exception:
+                pass
+        return surface_ids
 
     def _on_document_changed(self) -> None:
         self.status.update_from(self.viewer.api)
