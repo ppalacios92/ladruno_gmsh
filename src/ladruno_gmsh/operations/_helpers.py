@@ -122,6 +122,12 @@ def op_from_node(node) -> "Operation | None":
         "intersect": booleans.IntersectOp,
         "fragment": booleans.FragmentOp,
         "fragment_all": booleans.FragmentAllOp,
+        "imprint": booleans.ImprintOp,
+        "split": booleans.SplitOp,
+        "self_intersect": booleans.SelfIntersectOp,
+        "xor": booleans.XorOp,
+        "section": booleans.SectionOp,
+        "hollow": booleans.HollowOp,
         "mesh.generate": mesh.GenerateMeshOp,
         "mesh.refine": mesh.RefineMeshOp,
         "mesh.set_order": mesh.SetOrderOp,
@@ -150,12 +156,16 @@ def op_from_node(node) -> "Operation | None":
     raw = dict(node.parameters or {})
     fields = {f.name for f in _dc.fields(cls)}
     params = {k: v for k, v in raw.items() if k in fields}
-    for key in ("objects", "tools", "dim_tags"):
+    for key in ("objects", "tools", "dim_tags",
+                "volume_dim_tags", "open_face_dim_tags"):
         if key in params and isinstance(params[key], list):
             params[key] = tuple(tuple(int(x) for x in t) for t in params[key])
     for key in ("entity_tags", "element_tags"):
         if key in params and isinstance(params[key], list):
             params[key] = tuple(int(x) for x in params[key])
+    for key in ("point", "normal"):
+        if key in params and isinstance(params[key], list):
+            params[key] = tuple(float(x) for x in params[key])
     return cls(**params)
 
 

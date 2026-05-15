@@ -1,6 +1,18 @@
 """High-level operations (command pattern) acting on GeometryDocument."""
 from .base import Operation
-from .booleans import CutOp, FragmentAllOp, FragmentOp, FuseOp, IntersectOp
+from .booleans import (
+    CutOp,
+    FragmentAllOp,
+    FragmentOp,
+    FuseOp,
+    HollowOp,
+    ImprintOp,
+    IntersectOp,
+    SectionOp,
+    SelfIntersectOp,
+    SplitOp,
+    XorOp,
+)
 from .exports import ExportOp
 from .geometry import ExplodeOp, MergeToSolidOp, RemoveEntitiesOp, UnifyAllOp
 from .healing import HealOp, RemoveAllDuplicatesOp
@@ -38,6 +50,12 @@ __all__ = [
     "IntersectOp",
     "FragmentOp",
     "FragmentAllOp",
+    "ImprintOp",
+    "SplitOp",
+    "SelfIntersectOp",
+    "XorOp",
+    "SectionOp",
+    "HollowOp",
     "HealOp",
     "RemoveAllDuplicatesOp",
     "GenerateMeshOp",

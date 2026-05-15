@@ -26,7 +26,9 @@ from .operations import (
     FuseOp,
     GenerateMeshOp,
     HealOp,
+    HollowOp,
     ImportOp,
+    ImprintOp,
     IntersectOp,
     MergeOp,
     MergeToSolidOp,
@@ -41,11 +43,15 @@ from .operations import (
     RemovePhysicalGroupOp,
     ReverseElementsOp,
     ReverseOp,
+    SectionOp,
+    SelfIntersectOp,
     SetAllOutwardOp,
     SetOrderOp,
     SetOutwardOp,
     SetSizeFromCurvatureOp,
+    SplitOp,
     UnifyAllOp,
+    XorOp,
 )
 from .operations._helpers import op_from_node, rebuild_entities
 
@@ -371,6 +377,95 @@ class Session:
 
     def fragment_all(self, *, dim: int = 3) -> Operation:
         return self._apply(FragmentAllOp(dim=dim))
+
+    def imprint(self,
+                *,
+                object: Iterable[EntitySelector],
+                tool: Iterable[EntitySelector]) -> Operation:
+        """Mark shared interfaces between ``object`` and ``tool`` without
+        deleting either side. Useful for tie / cohesive contact in FEM.
+        """
+        objs = _to_dim_tags(object, self._document)
+        tools = _to_dim_tags(tool, self._document)
+        return self._apply(ImprintOp(objects=objs, tools=tools))
+
+    def split(self,
+              *,
+              object: Iterable[EntitySelector],
+              tool: Iterable[EntitySelector]) -> Operation:
+        """Cut ``object`` with ``tool`` and keep every piece (no
+        deletion). The user removes unwanted pieces afterwards.
+        """
+        objs = _to_dim_tags(object, self._document)
+        tools = _to_dim_tags(tool, self._document)
+        return self._apply(SplitOp(objects=objs, tools=tools))
+
+    def self_intersect(self,
+                       *,
+                       object: Iterable[EntitySelector]) -> Operation:
+        """Resolve auto-intersections inside ``object``. Implemented as
+        ``fragment(object, [])``.
+        """
+        objs = _to_dim_tags(object, self._document)
+        return self._apply(SelfIntersectOp(objects=objs))
+
+    def xor(self,
+            *,
+            object: Iterable[EntitySelector],
+            tool: Iterable[EntitySelector]) -> Operation:
+        """Symmetric difference: ``(object ∪ tool) \\ (object ∩ tool)``.
+
+        Recorded as a single timeline step even though it runs three
+        OCC calls (fuse, intersect, cut) internally.
+        """
+        objs = _to_dim_tags(object, self._document)
+        tools = _to_dim_tags(tool, self._document)
+        return self._apply(XorOp(objects=objs, tools=tools))
+
+    def section(self,
+                *,
+                volume: Iterable[EntitySelector],
+                point: tuple[float, float, float] = (0.0, 0.0, 0.0),
+                normal: tuple[float, float, float] = (0.0, 0.0, 1.0),
+                extent: Optional[float] = None) -> Operation:
+        """Slice a set of volumes with an infinite plane.
+
+        The plane is materialized as a finite disk centered at
+        ``point`` with axis ``normal``; its diameter is auto-sized to
+        cross every input bounding box unless ``extent`` is given.
+        Returns the cross-section as a set of 2D surface entities;
+        volumes are not consumed.
+        """
+        vols = _to_dim_tags(volume, self._document)
+        return self._apply(SectionOp(
+            volume_dim_tags=vols,
+            point=tuple(float(x) for x in point),
+            normal=tuple(float(x) for x in normal),
+            extent=extent,
+        ))
+
+    def hollow(self,
+               *,
+               volume: Iterable[EntitySelector],
+               thickness: float,
+               open_faces: Iterable[EntitySelector] = ()) -> Operation:
+        """Build a hollow shell from a set of volumes.
+
+        Wraps ``model.occ.addThickSolid``. ``thickness`` is signed:
+        negative values offset inward, positive values bulge outward.
+        Faces listed in ``open_faces`` are removed from the resulting
+        shell — that is the "open" side of the hollow (think the rim
+        of a cup).
+        """
+        vols = _to_dim_tags(volume, self._document)
+        open_face_tags = (
+            _to_dim_tags(open_faces, self._document) if open_faces else ()
+        )
+        return self._apply(HollowOp(
+            volume_dim_tags=vols,
+            thickness=float(thickness),
+            open_face_dim_tags=open_face_tags,
+        ))
 
     # ── Mesh ─────────────────────────────────────────────────────────
 

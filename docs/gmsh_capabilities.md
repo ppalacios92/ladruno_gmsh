@@ -160,6 +160,8 @@ primitive exists in `model.geo.*`. Global status: 🔴 (not prioritized).
 
 ## 4. Boolean operations (OCC)
 
+### Primitives (1:1 with gmsh)
+
 | gmsh | Status | Wrapper |
 |---|---|---|
 | `model.occ.fuse(objects, tools, tag, removeObject, removeTool)` | ✅ | `kernel.boolean.fuse` + `FuseOp` |
@@ -168,6 +170,21 @@ primitive exists in `model.geo.*`. Global status: 🔴 (not prioritized).
 | `model.occ.fragment(objects, tools, tag, removeObject, removeTool)` | ✅ | `kernel.boolean.fragment` + `FragmentOp` |
 | `fragment_all` (over every volume) | ✅ | `kernel.boolean.fragment_all` + `FragmentAllOp` |
 | `Session.unify_all_solids(*, dim=3)` (exhaustive fuse) | ✅ | `UnifyAllOp` |
+
+### Derived (composed from the primitives + standard CAD vocabulary)
+
+These are not new gmsh calls — they orchestrate the primitives above
+with the parameter / composition patterns expected from a CAD
+boolean menu. Each one is a single timeline node.
+
+| Operation | Status | Wrapper | gmsh recipe |
+|---|---|---|---|
+| Imprint (mark shared interface, keep both sides) | ✅ | `kernel.boolean.imprint` + `ImprintOp` | `fragment(objects, tools, removeObject=False, removeTool=False)` |
+| Split (cut and keep every piece) | ✅ | `SplitOp` | `fragment(...)` with both `remove*=False`, distinct in the timeline so the user can edit it without affecting an imprint |
+| Self-intersect (resolve auto-intersections) | ✅ | `kernel.boolean.self_intersect` + `SelfIntersectOp` | `fragment(objects, [])` |
+| XOR / Symmetric difference (A ⊕ B) | ✅ | `kernel.boolean.xor` + `XorOp` | `fuse(copy(A), copy(B))` then `intersect(copy(A), copy(B))` then `cut(union, inter)` then `remove(A, B)` |
+| Section (slice volumes with a plane) | ✅ | `kernel.boolean.section` + `SectionOp` | `addDisk(point, normal, auto-extent)` then `intersect(volumes, [disk], removeObject=False, removeTool=True)` |
+| Hollow / Shell (thick-shell from a volume) | ✅ | `kernel.boolean.hollow` + `HollowOp` | `addThickSolid(volume, excludeSurfaceTags=open_faces, offset=thickness)` |
 
 ---
 
@@ -794,7 +811,9 @@ but make the user's life easier from the viewer or the API.
 - Session and models.
 - STEP/IGES/BREP/STL/MSH import.
 - Repair (`heal`, `remove_all_duplicates`).
-- Full booleans (`fuse`, `cut`, `intersect`, `fragment`, `fragment_all`).
+- Full booleans (primitives + derived):
+  `fuse`, `cut`, `intersect`, `fragment`, `fragment_all`,
+  `imprint`, `split`, `self_intersect`, `xor`, `section`, `hollow`.
 - Meshing: `generate`, `refine`, `recombine`, `setOrder`, `optimize`,
   `clear`, global and per-entity size control, bbox validation.
 - Reorientation: `reverse`, `set_outward`, `set_all_outward`,
